@@ -4,6 +4,10 @@ import subprocess
 import fileinput
 import sys
 import re
+import optparse
+
+parser = optparse.OptionParser(usage="%prog [options] [files]", description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.")
+opts, args = parser.parse_args()
 
 def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
@@ -127,7 +131,7 @@ thread_state_lines = []
 binary_image_lines = []
 binary_images = {} # Keys: bundle IDs; values: UUIDs
 
-for line in fileinput.input():
+for line in fileinput.input(args):
 	line = line.strip()
 	if line.startswith('Process:'):
 		# New crash
