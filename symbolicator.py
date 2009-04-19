@@ -118,7 +118,7 @@ def symbolicate_backtrace_line(line):
 	if function_info is None:
 		return line
 	else:
-		return line[:match.end(0)] + function_info
+		return line[:match.end(0)] + function_info + '\n'
 		return line.replace(address, new_address)
 
 work = False
@@ -132,30 +132,30 @@ binary_image_lines = []
 binary_images = {} # Keys: bundle IDs; values: UUIDs
 
 for line in fileinput.input(args):
-	line = line.strip()
-	if line.startswith('Process:'):
+	line_stripped = line.strip()
+	if line_stripped.startswith('Process:'):
 		# New crash
 		work = True
 		is_in_backtrace = is_in_thread_state = is_in_binary_images = False
-		print line
+		sys.stdout.write(line)
 	elif not work:
 		continue
-	elif line.startswith('Report Version:'):
-		version = int(line[len('Report Version:'):])
+	elif line_stripped.startswith('Report Version:'):
+		version = int(line_stripped[len('Report Version:'):])
 		if version not in recognized_versions:
 			work = False
-		print line
-	elif line.startswith('Code Type:'):
-		architecture = architecture_for_code_type(line[len('Code Type:'):].strip())
-		print line
-	elif line.startswith('Thread ') and line.endswith(' Crashed:'):
+		sys.stdout.write(line)
+	elif line_stripped.startswith('Code Type:'):
+		architecture = architecture_for_code_type(line_stripped[len('Code Type:'):].strip())
+		sys.stdout.write(line)
+	elif line_stripped.startswith('Thread ') and line_stripped.endswith(' Crashed:'):
 		is_in_backtrace = True
 		backtrace_lines.append(line)
-	elif is_in_backtrace and ('Thread State' in line):
+	elif is_in_backtrace and ('Thread State' in line_stripped):
 		is_in_backtrace = False
 		is_in_thread_state = True
 		thread_state_lines.append(line)
-	elif line == 'Binary Images:':
+	elif line_stripped == 'Binary Images:':
 		is_in_thread_state = False
 		is_in_binary_images = True
 		binary_image_lines.append(line)
@@ -165,17 +165,17 @@ for line in fileinput.input(args):
 		backtrace_lines.append(line)
 	elif not is_in_binary_images:
 		# We haven't gotten to backtrace or binary images yet. Pass this line through.
-		print line
+		sys.stdout.write(line)
 	elif is_in_binary_images:
-		if line.strip():
+		if line_stripped.strip():
 			binary_image_lines.append(line)
-			bundle_ID, UUID = parse_binary_image_line(line)
+			bundle_ID, UUID = parse_binary_image_line(line_stripped)
 			binary_images[bundle_ID] = UUID
 		else:
 			# End of crash
 			for line in backtrace_lines:
-				print symbolicate_backtrace_line(line)
+				sys.stdout.write(symbolicate_backtrace_line(line))
 			for line in thread_state_lines:
-				print line
+				sys.stdout.write(line)
 			for line in binary_image_lines:
-				print line
+				sys.stdout.write(line)
