@@ -137,16 +137,20 @@ for line in fileinput.input(args):
 		# New crash
 		work = True
 		is_in_backtrace = is_in_thread_state = is_in_binary_images = False
+		print line
 	elif not work:
 		continue
 	elif line.startswith('Report Version:'):
 		version = int(line[len('Report Version:'):])
 		if version not in recognized_versions:
 			work = False
+		print line
 	elif line.startswith('Code Type:'):
 		architecture = architecture_for_code_type(line[len('Code Type:'):].strip())
+		print line
 	elif line.startswith('Thread ') and line.endswith(' Crashed:'):
 		is_in_backtrace = True
+		backtrace_lines.append(line)
 	elif is_in_backtrace and ('Thread State' in line):
 		is_in_backtrace = False
 		is_in_thread_state = True
@@ -154,6 +158,7 @@ for line in fileinput.input(args):
 	elif line == 'Binary Images:':
 		is_in_thread_state = False
 		is_in_binary_images = True
+		binary_image_lines.append(line)
 	elif is_in_thread_state:
 		thread_state_lines.append(line)
 	elif is_in_backtrace:
