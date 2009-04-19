@@ -67,7 +67,7 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		we_care = False
 		tag_compile_unit = False
 		tag_subprogram = False
-		filename = function = '(unknown)'
+		filename = function = None
 		line_number = 0
 		for line in dwarfdump.stdout:
 			line = line.strip()
@@ -102,7 +102,29 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		else:
 			dwarfdump.wait()
 
-		return '%s (%s:%s)' % (function, filename, line_number)
+		if function:
+			if line_number:
+				format = '%(function)s (%(filename)s:%(line_number)s)'
+			elif filename:
+				format = '%(function)s (%(filename)s)'
+			else:
+				format = '%(function)s'
+		else:
+			if line_number:
+				format = '%(filename)s:%(line_number)s'
+			elif filename:
+				format = '%(filename)s'
+			else:
+				format = None
+
+		if format is None:
+			return None
+
+		return format % {
+			'function': function,
+			'filename': filename,
+			'line_number': line_number,
+		}
 	else:
 		return None
 
