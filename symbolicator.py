@@ -6,7 +6,10 @@ import sys
 import re
 import optparse
 
-parser = optparse.OptionParser(usage="%prog [options] [files]", description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.")
+parser = optparse.OptionParser(
+	usage="%prog [options] [files]",
+	description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
+)
 opts, args = parser.parse_args()
 
 def architecture_for_code_type(code_type):
