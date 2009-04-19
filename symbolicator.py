@@ -150,9 +150,12 @@ for line in fileinput.input(args):
 	elif is_in_backtrace and ('Thread State' in line):
 		is_in_backtrace = False
 		is_in_thread_state = True
+		thread_state_lines.append(line)
 	elif line == 'Binary Images:':
 		is_in_thread_state = False
 		is_in_binary_images = True
+	elif is_in_thread_state:
+		thread_state_lines.append(line)
 	elif is_in_backtrace:
 		backtrace_lines.append(line)
 	elif not is_in_binary_images:
