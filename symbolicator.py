@@ -143,6 +143,7 @@ for line in fileinput.input(args):
 	elif line_stripped.startswith('Report Version:'):
 		version = int(line_stripped[len('Report Version:'):])
 		if version not in recognized_versions:
+			print >>sys.stderr, 'Unrecognized crash log version:', version, '(skipping this crash log)'
 			work = False
 		sys.stdout.write(line)
 	elif line_stripped.startswith('Code Type:'):
