@@ -28,14 +28,24 @@ def reformat_UUID(UUID):
 		UUID = '-'.join([UUID[0:8], UUID[8:12], UUID[12:16], UUID[16:20], UUID[20:]])
 	return UUID
 
+dSYM_cache = {} # Keys: UUIDs; values: dSYM bundle paths (None indicating dSYM bundle not found)
 def find_dSYM_by_UUID(UUID):
-	mdfind = subprocess.Popen(['mdfind', 'com_apple_xcode_dsym_uuids = ' + reformat_UUID(UUID)], stdout=subprocess.PIPE)
 	try:
-		dSYM_path = iter(mdfind.stdout).next()[:-1] # Strip \n
-	except StopIteration:
-		dSYM_path = None
-	mdfind.wait()
+		dSYM_path = dSYM_cache[UUID]
+	except KeyError:
+		mdfind = subprocess.Popen(['mdfind', 'com_apple_xcode_dsym_uuids = ' + reformat_UUID(UUID)], stdout=subprocess.PIPE)
+
+		try:
+			dSYM_path = iter(mdfind.stdout).next()[:-1] # Strip \n
+		except StopIteration:
+			dSYM_path = None
+
+		mdfind.wait()
+
+		dSYM_cache[UUID] = dSYM_path
+
 	return dSYM_path
+
 def find_dSYM_by_bundle_ID(bundle_ID):
 	return find_dSYM_by_UUID(binary_images[bundle_ID])
 
