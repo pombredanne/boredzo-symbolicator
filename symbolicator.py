@@ -6,13 +6,6 @@ import sys
 import re
 import optparse
 
-parser = optparse.OptionParser(
-	usage="%prog [options] [files]",
-	description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
-	version='%prog 1.0 by Peter Hosey',
-)
-opts, args = parser.parse_args()
-
 def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
 	code_types_to_architectures = {
@@ -147,62 +140,72 @@ def symbolicate_backtrace_line(line):
 		return line[:match.end(0)] + function_info + '\n'
 		return line.replace(address, new_address)
 
-work = False
-architecture = None
-is_in_backtrace = False
-is_in_thread_state = False
-is_in_binary_images = False
-backtrace_lines = []
-thread_state_lines = []
-binary_image_lines = []
-binary_images = {} # Keys: bundle IDs; values: UUIDs
+def main():
+	parser = optparse.OptionParser(
+		usage="%prog [options] [files]",
+		description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
+		version='%prog 1.0 by Peter Hosey',
+	)
+	opts, args = parser.parse_args()
+	work = False
+	architecture = None
+	is_in_backtrace = False
+	is_in_thread_state = False
+	is_in_binary_images = False
+	backtrace_lines = []
+	thread_state_lines = []
+	binary_image_lines = []
+	binary_images = {} # Keys: bundle IDs; values: UUIDs
 
-for line in fileinput.input(args):
-	line_stripped = line.strip()
-	if line_stripped.startswith('Process:'):
-		# New crash
-		work = True
-		is_in_backtrace = is_in_thread_state = is_in_binary_images = False
-		sys.stdout.write(line)
-	elif not work:
-		continue
-	elif line_stripped.startswith('Report Version:'):
-		version = int(line_stripped[len('Report Version:'):])
-		if version not in recognized_versions:
-			print >>sys.stderr, 'Unrecognized crash log version:', version, '(skipping this crash log)'
-			work = False
-		sys.stdout.write(line)
-	elif line_stripped.startswith('Code Type:'):
-		architecture = architecture_for_code_type(line_stripped[len('Code Type:'):].strip())
-		sys.stdout.write(line)
-	elif line_stripped.startswith('Thread ') and line_stripped.endswith(' Crashed:'):
-		is_in_backtrace = True
-		backtrace_lines.append(line)
-	elif is_in_backtrace and ('Thread State' in line_stripped):
-		is_in_backtrace = False
-		is_in_thread_state = True
-		thread_state_lines.append(line)
-	elif line_stripped == 'Binary Images:':
-		is_in_thread_state = False
-		is_in_binary_images = True
-		binary_image_lines.append(line)
-	elif is_in_thread_state:
-		thread_state_lines.append(line)
-	elif is_in_backtrace:
-		backtrace_lines.append(line)
-	elif not is_in_binary_images:
-		# We haven't gotten to backtrace or binary images yet. Pass this line through.
-		sys.stdout.write(line)
-	elif is_in_binary_images:
-		if line_stripped.strip():
+	for line in fileinput.input(args):
+		line_stripped = line.strip()
+		if line_stripped.startswith('Process:'):
+			# New crash
+			work = True
+			is_in_backtrace = is_in_thread_state = is_in_binary_images = False
+			sys.stdout.write(line)
+		elif not work:
+			continue
+		elif line_stripped.startswith('Report Version:'):
+			version = int(line_stripped[len('Report Version:'):])
+			if version not in recognized_versions:
+				print >>sys.stderr, 'Unrecognized crash log version:', version, '(skipping this crash log)'
+				work = False
+			sys.stdout.write(line)
+		elif line_stripped.startswith('Code Type:'):
+			architecture = architecture_for_code_type(line_stripped[len('Code Type:'):].strip())
+			sys.stdout.write(line)
+		elif line_stripped.startswith('Thread ') and line_stripped.endswith(' Crashed:'):
+			is_in_backtrace = True
+			backtrace_lines.append(line)
+		elif is_in_backtrace and ('Thread State' in line_stripped):
+			is_in_backtrace = False
+			is_in_thread_state = True
+			thread_state_lines.append(line)
+		elif line_stripped == 'Binary Images:':
+			is_in_thread_state = False
+			is_in_binary_images = True
 			binary_image_lines.append(line)
-			bundle_ID, UUID = parse_binary_image_line(line_stripped)
-			binary_images[bundle_ID] = UUID
-		else:
-			# End of crash
-			for line in backtrace_lines:
-				sys.stdout.write(symbolicate_backtrace_line(line))
-			for line in thread_state_lines:
-				sys.stdout.write(line)
-			for line in binary_image_lines:
-				sys.stdout.write(line)
+		elif is_in_thread_state:
+			thread_state_lines.append(line)
+		elif is_in_backtrace:
+			backtrace_lines.append(line)
+		elif not is_in_binary_images:
+			# We haven't gotten to backtrace or binary images yet. Pass this line through.
+			sys.stdout.write(line)
+		elif is_in_binary_images:
+			if line_stripped.strip():
+				binary_image_lines.append(line)
+				bundle_ID, UUID = parse_binary_image_line(line_stripped)
+				binary_images[bundle_ID] = UUID
+			else:
+				# End of crash
+				for line in backtrace_lines:
+					sys.stdout.write(symbolicate_backtrace_line(line))
+				for line in thread_state_lines:
+					sys.stdout.write(line)
+				for line in binary_image_lines:
+					sys.stdout.write(line)
+
+if __name__ == '__main__':
+	main()
