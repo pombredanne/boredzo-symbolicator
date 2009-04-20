@@ -126,7 +126,7 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		return None
 
 def symbolicate_backtrace_line(line):
-	match = re.match('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z\./]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+', line)
+	match = re.match('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+', line)
 	if not match:
 		return line
 
