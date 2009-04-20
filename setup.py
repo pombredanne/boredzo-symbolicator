@@ -16,7 +16,7 @@ setup(
 	py_modules=['symbolicator', ],
 	author='Peter Hosey',
 	url='http://boredzo.org/symbolicator/',
-	version='1.0.0',
+	version='1.0.1',
 	license='BSD',
 	description="The Symbolicator is a program to symbolicate crash logs generated on Mac OS X.",
 	entry_points={'console_scripts': ['symbolicator=symbolicator:main', ],

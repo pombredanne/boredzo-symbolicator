@@ -144,7 +144,7 @@ def main():
 	parser = optparse.OptionParser(
 		usage="%prog [options] [files]",
 		description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
-		version='%prog 1.0 by Peter Hosey',
+		version='%prog 1.0.1 by Peter Hosey',
 	)
 	opts, args = parser.parse_args()
 	work = False
