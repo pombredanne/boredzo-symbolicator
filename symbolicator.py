@@ -148,15 +148,18 @@ def main():
 	)
 	opts, args = parser.parse_args()
 
-	work = False
+	global binary_images
+	binary_images = {} # Keys: bundle IDs; values: UUIDs
+	global architecture
 	architecture = None
+
+	work = False
 	is_in_backtrace = False
 	is_in_thread_state = False
 	is_in_binary_images = False
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	binary_images = {} # Keys: bundle IDs; values: UUIDs
 
 	for line in fileinput.input(args):
 		line_stripped = line.strip()
