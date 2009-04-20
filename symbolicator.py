@@ -147,6 +147,7 @@ def main():
 		version='%prog 1.0.1 by Peter Hosey',
 	)
 	opts, args = parser.parse_args()
+
 	work = False
 	architecture = None
 	is_in_backtrace = False
