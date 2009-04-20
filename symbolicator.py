@@ -161,9 +161,22 @@ def main():
 	thread_state_lines = []
 	binary_image_lines = []
 
+	def flush_buffers():
+		for line in backtrace_lines:
+			sys.stdout.write(symbolicate_backtrace_line(line))
+		for line in thread_state_lines:
+			sys.stdout.write(line)
+		for line in binary_image_lines:
+			sys.stdout.write(line)
+
 	for line in fileinput.input(args):
 		line_stripped = line.strip()
 		if line_stripped.startswith('Process:'):
+			if is_in_binary_images:
+				# End previous crash
+				flush_buffers()
+				is_in_binary_images = False
+
 			# New crash
 			work = True
 			is_in_backtrace = is_in_thread_state = is_in_binary_images = False
@@ -204,12 +217,12 @@ def main():
 				binary_images[bundle_ID] = UUID
 			else:
 				# End of crash
-				for line in backtrace_lines:
-					sys.stdout.write(symbolicate_backtrace_line(line))
-				for line in thread_state_lines:
-					sys.stdout.write(line)
-				for line in binary_image_lines:
-					sys.stdout.write(line)
+				flush_buffers()
+				is_in_binary_images = False
+
+	if is_in_binary_images:
+		# Crash not followed by a newline
+		flush_buffers()
 
 if __name__ == '__main__':
 	main()
