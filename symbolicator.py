@@ -47,7 +47,17 @@ def find_dSYM_by_UUID(UUID):
 	return dSYM_path
 
 def find_dSYM_by_bundle_ID(bundle_ID):
-	return find_dSYM_by_UUID(binary_images[bundle_ID])
+	if bundle_ID in binary_images:
+		return find_dSYM_by_UUID(binary_images[bundle_ID])
+	elif bundle_ID.startswith('...'):
+		bundle_ID_suffix = bundle_ID.lstrip('...')
+		for (bundle_ID_key, UUID) in binary_images.iteritems():
+			if bundle_ID_key.endswith(bundle_ID_suffix):
+				binary_images[bundle_ID] = UUID
+				return find_dSYM_by_UUID(UUID)
+		return None
+	else:
+		return None
 
 def parse_binary_image_line(line):
 	elements = iter(line.split())
