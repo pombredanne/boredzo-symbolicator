@@ -180,6 +180,7 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
+	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*$')
 
 	def flush_buffers():
 		for line in backtrace_lines:
@@ -212,7 +213,7 @@ def main():
 		elif line_stripped.startswith('Code Type:'):
 			architecture = architecture_for_code_type(line_stripped[len('Code Type:'):].strip())
 			sys.stdout.write(line)
-		elif line_stripped.startswith('Thread ') and line_stripped.endswith(' Crashed:'):
+		elif thread_trace_start_exp.match(line_stripped):
 			is_in_backtrace = True
 			backtrace_lines.append(line)
 		elif is_in_backtrace and ('Thread State' in line_stripped):
