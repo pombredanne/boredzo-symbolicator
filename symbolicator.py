@@ -180,7 +180,7 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\w*$')
+	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*$')
 
 	def flush_buffers():
 		for line in backtrace_lines:
