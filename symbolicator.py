@@ -60,23 +60,40 @@ def find_dSYM_by_bundle_ID(bundle_ID):
 		return None
 
 def parse_binary_image_line(line):
-	elements = iter(line.split())
+	bundle_ID = ""
+	UUID = ""
 
-	start_address = elements.next()
-	elements.next() # Hyphen-minus
-	end_address = elements.next()
-	bundle_ID = elements.next()
-	short_version = elements.next()
-	bundle_version = elements.next()
-	UUID_in_brackets = elements.next()
+	# The bundle ID is a fixed width from the left (26th character)
+	line_at_bundle_start = line[25:];
+	for a_bundle_id in bundle_idents:
+		if line_at_bundle_start.startswith( a_bundle_id + " " ):
+			bundle_ID = a_bundle_id
+			match = binary_image_uuid_exp.match( line )
+			if not match:
+				UUID = ""
+			else:
+				UUID = match.group('uuid')
+			
+			break
 
-	UUID = UUID_in_brackets.strip('<>')
-	# The main(?) executable has plus sign before its bundle ID. Strip this off.
-	bundle_ID = bundle_ID.lstrip('+')
+		elif a_bundle_id.startswith('...'):
+			a_bundle_id_suffix = a_bundle_id.lstrip('...')
+			index = line_at_bundle_start.find( a_bundle_id_suffix )
+			# Crash Reporter truncates at 30, so the index we find the stub at + 27 should equal the 
+			# entire length of the bundle ID
+			if index != -1:
+				bundle_ID = line_at_bundle_start[:index + 27]
+				match = binary_image_uuid_exp.match( line )
+				if not match:
+					UUID = ""
+				else:
+					UUID = match.group('uuid')
+				
+				break
+			
+	return( bundle_ID, UUID )
 
-	return (bundle_ID, UUID)
-
-def look_up_address_by_bundle_ID(bundle_ID, address):
+def look_up_address_by_bundle_ID(bundle_ID, address, slide):
 	dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
 	if dSYM_path:
 		dwarfdump = subprocess.Popen(['dwarfdump', '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
@@ -134,8 +151,12 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 			else:
 				format = None
 
+		# If we found nothing, try to find something via the slide value (if one exists)
 		if format is None:
-			return None
+			if slide is not None:
+				return look_up_address_by_bundle_ID( bundle_ID, slide, None )
+			else:
+				return None
 
 		return format % {
 			'function': function,
@@ -146,19 +167,32 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		return None
 
 def symbolicate_backtrace_line(line):
-	match = re.match('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+', line)
+	match = backtrace_exp.match( line )
 	if not match:
 		return line
 
-	bundle_ID = match.group('bundle_ID')
+	bundle_ID = match.group('bundle_ID').strip()
 	address = match.group('address')
 
-	function_info = look_up_address_by_bundle_ID(bundle_ID, address)
+	slideMatch = backtrace_slide_exp.match( line )
+	if slideMatch:
+		slide = slideMatch.group('slide')
+	else:
+		slide = None
+
+	function_info = look_up_address_by_bundle_ID(bundle_ID, address, slide)
 	if function_info is None:
 		return line
 	else:
 		return line[:match.end(0)] + function_info + '\n'
-		return line.replace(address, new_address)
+
+def bundle_ident_from_backtrace(line):
+	match = backtrace_exp.match( line )
+	if not match:
+		return None
+	
+	bundle_ID = match.group('bundle_ID').strip()
+	return( bundle_ID )
 
 def main():
 	parser = optparse.OptionParser(
@@ -170,8 +204,13 @@ def main():
 
 	global binary_images
 	binary_images = {} # Keys: bundle IDs; values: UUIDs
+	global bundle_idents
+	bundle_idents = []
 	global architecture
 	architecture = None
+	global binary_image_uuid_exp
+	global backtrace_exp
+	global backtrace_slide_exp
 
 	work = False
 	is_in_backtrace = False
@@ -181,6 +220,13 @@ def main():
 	thread_state_lines = []
 	binary_image_lines = []
 	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*$')
+	binary_image_uuid_exp = re.compile('^.+\<(?P<uuid>[^\>]+)\>.+$')
+
+	# It'd be preferred to have just one regex but the only character we have to key on is +, which 
+	# would get us incorrect results when a class method is encountered.  backtrace_slide_exp takes
+	# advantage of the fact that regexs are greedy by default.
+	backtrace_exp = re.compile('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./ ]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+' )
+	backtrace_slide_exp = re.compile( '^[^\+]+\+\s(?P<slide>\d+)$' )
 
 	def flush_buffers():
 		for line in backtrace_lines:
@@ -226,15 +272,27 @@ def main():
 			binary_image_lines.append(line)
 		elif is_in_thread_state:
 			thread_state_lines.append(line)
+
 		elif is_in_backtrace:
+			the_bundle_id = bundle_ident_from_backtrace(line)
+			if the_bundle_id is not None:
+				#binary_images[the_bundle_id] = None
+				try:
+#					print >> sys.stderr, "index: ", bundle_idents.index( the_bundle_id ), "\n"
+					bundle_idents.index( the_bundle_id )
+				except ValueError:
+					bundle_idents.append( the_bundle_id )
+				
 			backtrace_lines.append(line)
+
 		elif not is_in_binary_images:
 			# We haven't gotten to backtrace or binary images yet. Pass this line through.
 			sys.stdout.write(line)
+
 		elif is_in_binary_images:
 			if line_stripped.strip():
 				binary_image_lines.append(line)
-				bundle_ID, UUID = parse_binary_image_line(line_stripped)
+				bundle_ID, UUID = parse_binary_image_line(line)
 				binary_images[bundle_ID] = UUID
 			else:
 				# End of crash
@@ -247,3 +305,4 @@ def main():
 
 if __name__ == '__main__':
 	main()
+
