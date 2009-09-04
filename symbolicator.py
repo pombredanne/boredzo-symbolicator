@@ -5,17 +5,20 @@ import fileinput
 import sys
 import re
 import optparse
+import pdb
 
 def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
 	code_types_to_architectures = {
 		'X86': 'i386',
 		'PPC': 'ppc',
+		'ARM': 'arm',
 	}
 	return code_types_to_architectures[arch_code_type_name]
 
 recognized_versions = [
 	6,
+	104
 ]
 
 def reformat_UUID(UUID):
@@ -33,6 +36,7 @@ def find_dSYM_by_UUID(UUID):
 	try:
 		dSYM_path = dSYM_cache[UUID]
 	except KeyError:
+#		pdb.set_trace();
 		mdfind = subprocess.Popen(['mdfind', 'com_apple_xcode_dsym_uuids = ' + reformat_UUID(UUID)], stdout=subprocess.PIPE)
 
 		try:
@@ -65,6 +69,7 @@ def parse_binary_image_line(line):
 
 	# The bundle ID is a fixed width from the left (26th character)
 	line_at_bundle_start = line[25:];
+#	pdb.set_trace()
 	for a_bundle_id in bundle_idents:
 		if line_at_bundle_start.startswith( a_bundle_id + " " ):
 			bundle_ID = a_bundle_id
@@ -174,6 +179,8 @@ def symbolicate_backtrace_line(line):
 	bundle_ID = match.group('bundle_ID').strip()
 	address = match.group('address')
 
+#	print >> sys.stderr, "bundle_ID: ", bundle_ID, "\n"
+
 	slideMatch = backtrace_slide_exp.match( line )
 	if slideMatch:
 		slide = slideMatch.group('slide')
@@ -219,7 +226,7 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*$')
+	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(\(Dispatch queue\))?.+$')
 	binary_image_uuid_exp = re.compile('^.+\<(?P<uuid>[^\>]+)\>.+$')
 
 	# It'd be preferred to have just one regex but the only character we have to key on is +, which 
@@ -238,6 +245,7 @@ def main():
 
 	for line in fileinput.input(args):
 		line_stripped = line.strip()
+#		pdb.set_trace()
 		if line_stripped.startswith('Process:'):
 			if is_in_binary_images:
 				# End previous crash
