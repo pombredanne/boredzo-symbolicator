@@ -226,7 +226,7 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(\(Dispatch queue\))?.+$')
+	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(Dispatch queue:.+)?$')
 	binary_image_uuid_exp = re.compile('^.+\<(?P<uuid>[^\>]+)\>.+$')
 
 	# It'd be preferred to have just one regex but the only character we have to key on is +, which 
