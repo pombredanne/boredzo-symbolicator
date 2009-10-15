@@ -5,17 +5,21 @@ import fileinput
 import sys
 import re
 import optparse
+import os
 
 def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
 	code_types_to_architectures = {
 		'X86': 'i386',
 		'PPC': 'ppc',
+		'X86-64': 'x86_64',
+		'ARM': 'arm',
 	}
 	return code_types_to_architectures[arch_code_type_name]
 
 recognized_versions = [
 	6,
+	104,
 ]
 
 def reformat_UUID(UUID):
@@ -48,7 +52,7 @@ def find_dSYM_by_UUID(UUID):
 
 def find_dSYM_by_bundle_ID(bundle_ID):
 	if bundle_ID in binary_images:
-		return find_dSYM_by_UUID(binary_images[bundle_ID])
+		return find_dSYM_by_UUID(binary_images[bundle_ID]['uuid'])
 	elif bundle_ID.startswith('...'):
 		bundle_ID_suffix = bundle_ID.lstrip('...')
 		for (bundle_ID_key, UUID) in binary_images.iteritems():
@@ -69,13 +73,25 @@ def parse_binary_image_line(line):
 	short_version = elements.next()
 	bundle_version = elements.next()
 	UUID_in_brackets = elements.next()
+	binary_path = elements.next()
 
 	UUID = UUID_in_brackets.strip('<>')
 	# The main(?) executable has plus sign before its bundle ID. Strip this off.
 	bundle_ID = bundle_ID.lstrip('+')
 
-	return (bundle_ID, UUID)
+	return (bundle_ID, UUID, binary_path)
 
+def look_up_address_by_path(bundle_ID, address):
+	"""using atos looks up symbols"""
+	path = binary_images[bundle_ID]['path']
+	if not os.path.exists(path):
+		print >>sys.stderr, "Binary does not exist: ", path
+		return
+	atos = subprocess.Popen(['/Developer/usr/bin/atos', '-arch', architecture, '-o', path, address], stdout=subprocess.PIPE)
+	for line in atos.stdout:
+		line = line.strip()
+		return line
+	
 def look_up_address_by_bundle_ID(bundle_ID, address):
 	dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
 	if dSYM_path:
@@ -89,7 +105,7 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		for line in dwarfdump.stdout:
 			line = line.strip()
 			if line.startswith('File: '):
-				if ('(architecture %s)' % (architecture,)) in line:
+				if (('(architecture %s)' % (architecture,)) in line) or (('(%s)' % (architecture,)) in line): # newer logs don't have 'architecture'
 					we_care = True
 					tag_compile_unit = False
 					tag_subprogram = False
@@ -146,19 +162,27 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		return None
 
 def symbolicate_backtrace_line(line):
-	match = re.match('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+', line)
+	# match lines with addresses + offsets only, skips ones with symbols
+	match = re.match('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+(?P<base_address>0x[0-9A-Fa-f]+)\s+(\+\s+)(?P<offset>[0-9]+)', line)
 	if not match:
 		return line
 
 	bundle_ID = match.group('bundle_ID')
 	address = match.group('address')
+	offset = match.group('offset')
 
 	function_info = look_up_address_by_bundle_ID(bundle_ID, address)
-	if function_info is None:
+	if function_info is None: # check if it's executable or not, then use address or offset
+		if bundle_ID == executable_bundle_id:
+			lookup = look_up_address_by_path(bundle_ID, address)
+		else:
+			lookup = look_up_address_by_path(bundle_ID, offset)
+		if lookup:
+			return line[:match.start('base_address')] + lookup + '\n'
 		return line
 	else:
 		return line[:match.end(0)] + function_info + '\n'
-		return line.replace(address, new_address)
+		#return line.replace(address, new_address) # wtf
 
 def main():
 	parser = optparse.OptionParser(
@@ -171,6 +195,8 @@ def main():
 	global binary_images
 	binary_images = {} # Keys: bundle IDs; values: UUIDs
 	global architecture
+	global executable_bundle_id
+	executable_bundle_id = None
 	architecture = None
 
 	work = False
@@ -180,7 +206,7 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*$')
+	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(.*)$')
 
 	def flush_buffers():
 		for line in backtrace_lines:
@@ -234,8 +260,10 @@ def main():
 		elif is_in_binary_images:
 			if line_stripped.strip():
 				binary_image_lines.append(line)
-				bundle_ID, UUID = parse_binary_image_line(line_stripped)
-				binary_images[bundle_ID] = UUID
+				bundle_ID, UUID, path = parse_binary_image_line(line_stripped)
+				if executable_bundle_id == None: # first entry is executable
+					executable_bundle_id = bundle_ID
+				binary_images[bundle_ID] = {'uuid': UUID, 'path': path}
 			else:
 				# End of crash
 				flush_buffers()
