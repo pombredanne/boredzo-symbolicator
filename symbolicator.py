@@ -58,7 +58,7 @@ def find_dSYM_by_bundle_ID(bundle_ID):
 		for (bundle_ID_key, UUID) in binary_images.iteritems():
 			if bundle_ID_key.endswith(bundle_ID_suffix):
 				binary_images[bundle_ID] = UUID
-				return find_dSYM_by_UUID(UUID)
+				return find_dSYM_by_UUID(UUID['uuid'])
 		return None
 	else:
 		return None
@@ -73,7 +73,10 @@ def parse_binary_image_line(line):
 	short_version = elements.next()
 	bundle_version = elements.next()
 	UUID_in_brackets = elements.next()
-	binary_path = elements.next()
+	try:
+		binary_path = elements.next()
+	except StopIteration:
+		return (None, None, None)
 
 	UUID = UUID_in_brackets.strip('<>')
 	# The main(?) executable has plus sign before its bundle ID. Strip this off.
@@ -95,7 +98,7 @@ def look_up_address_by_path(bundle_ID, address):
 def look_up_address_by_bundle_ID(bundle_ID, address):
 	dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
 	if dSYM_path:
-		dwarfdump = subprocess.Popen(['dwarfdump', '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
+		dwarfdump = subprocess.Popen(['dwarfdump', '--arch', architecture, '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
 
 		we_care = False
 		tag_compile_unit = False
@@ -105,12 +108,12 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		for line in dwarfdump.stdout:
 			line = line.strip()
 			if line.startswith('File: '):
-				if (('(architecture %s)' % (architecture,)) in line) or (('(%s)' % (architecture,)) in line): # newer logs don't have 'architecture'
-					we_care = True
-					tag_compile_unit = False
-					tag_subprogram = False
-				else:
-					we_care = False
+				#if (('(architecture %s)' % (architecture,)) in line) or (('(%s)' % (architecture,)) in line): # newer logs don't have 'architecture'
+				we_care = True
+				tag_compile_unit = False
+				tag_subprogram = False
+				#else:
+				#	we_care = False
 			elif we_care:
 				if 'TAG_compile_unit' in line:
 					tag_compile_unit = True
@@ -261,9 +264,10 @@ def main():
 			if line_stripped.strip():
 				binary_image_lines.append(line)
 				bundle_ID, UUID, path = parse_binary_image_line(line_stripped)
-				if executable_bundle_id == None: # first entry is executable
-					executable_bundle_id = bundle_ID
-				binary_images[bundle_ID] = {'uuid': UUID, 'path': path}
+				if bundle_ID:
+					if executable_bundle_id == None: # first entry is executable
+						executable_bundle_id = bundle_ID
+					binary_images[bundle_ID] = {'uuid': UUID, 'path': path}
 			else:
 				# End of crash
 				flush_buffers()
