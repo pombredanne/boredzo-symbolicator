@@ -80,43 +80,34 @@ def parse_binary_image_line(line):
 def look_up_address_by_bundle_ID(bundle_ID, address):
 	dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
 	if dSYM_path:
-		dwarfdump = subprocess.Popen(['dwarfdump', '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
+		dwarfdump = subprocess.Popen(['dwarfdump', '--arch=%s' % (architecture,), '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
 
-		we_care = False
 		tag_compile_unit = False
 		tag_subprogram = False
 		filename = function = None
 		line_number = 0
 		for line in dwarfdump.stdout:
 			line = line.strip()
-			if line.startswith('File: '):
-				if ('(architecture %s)' % (architecture,)) in line:
-					we_care = True
-					tag_compile_unit = False
-					tag_subprogram = False
-				else:
-					we_care = False
-			elif we_care:
-				if 'TAG_compile_unit' in line:
-					tag_compile_unit = True
-					tag_subprogram = False
-				elif 'TAG_subprogram' in line:
-					tag_compile_unit = False
-					tag_subprogram = True
-				elif line.startswith('AT_name('):
-					name = ' '.join(line.split()[1:-1]).strip('"')
-					if tag_compile_unit:
-						filename = name
-					elif tag_subprogram:
-						function = name
-				elif line.startswith('Line table file: '):
-					match = re.search("'[^']+'", line)
-					if match:
-						filename = match.group(0).strip("'")
-					# The line number is the first decimal number after the filename.
-					match = re.search('[0-9]+', line[match.end(0):])
-					if match:
-						line_number = int(match.group(0))
+			if 'TAG_compile_unit' in line:
+				tag_compile_unit = True
+				tag_subprogram = False
+			elif 'TAG_subprogram' in line:
+				tag_compile_unit = False
+				tag_subprogram = True
+			elif line.startswith('AT_name('):
+				name = ' '.join(line.split()[1:-1]).strip('"')
+				if tag_compile_unit:
+					filename = name
+				elif tag_subprogram:
+					function = name
+			elif line.startswith('Line table file: '):
+				match = re.search("'[^']+'", line)
+				if match:
+					filename = match.group(0).strip("'")
+				# The line number is the first decimal number after the filename.
+				match = re.search('[0-9]+', line[match.end(0):])
+				if match:
+					line_number = int(match.group(0))
 		else:
 			dwarfdump.wait()
 
