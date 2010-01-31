@@ -10,6 +10,7 @@ def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
 	code_types_to_architectures = {
 		'X86': 'i386',
+		'X86-64': 'x86_64',
 		'PPC': 'ppc',
 	}
 	return code_types_to_architectures[arch_code_type_name]
