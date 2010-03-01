@@ -5,7 +5,6 @@ import fileinput
 import sys
 import re
 import optparse
-import pdb
 
 def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
@@ -36,7 +35,7 @@ def find_dSYM_by_UUID(UUID):
 	try:
 		dSYM_path = dSYM_cache[UUID]
 	except KeyError:
-#		pdb.set_trace();
+		print >>sys.stderr, 'mdfind', "'com_apple_xcode_dsym_uuids = %s'" % (reformat_UUID(UUID),)
 		mdfind = subprocess.Popen(['mdfind', 'com_apple_xcode_dsym_uuids = ' + reformat_UUID(UUID)], stdout=subprocess.PIPE)
 
 		try:
@@ -313,4 +312,3 @@ def main():
 
 if __name__ == '__main__':
 	main()
-
