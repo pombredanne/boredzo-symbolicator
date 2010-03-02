@@ -12,7 +12,7 @@
 
 - (void) crashByThrowingACocoaException;
 - (void) crashByAccessingBadMemory;
-- (void) crashByRecursingInfinitely;
+- (BOOL) crashByRecursingInfinitely;
 
 @end
 
@@ -90,8 +90,10 @@
 	char *ptr = (char *)1;
 	*ptr = 42; //BOOM
 }
-- (void) crashByRecursingInfinitely {
-	[self crashByRecursingInfinitely];
+- (BOOL) crashByRecursingInfinitely {
+	BOOL value = [self crashByRecursingInfinitely];
+	value ^= time(NULL);
+	return value;
 }
 
 @end
