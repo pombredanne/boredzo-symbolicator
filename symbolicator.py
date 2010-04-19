@@ -184,7 +184,7 @@ def symbolicate_backtrace_line(line):
 			return line[:match.start('base_address')] + lookup + '\n'
 		return line
 	else:
-		return line[:match.end(0)] + function_info + '\n'
+		return line[:match.start('base_address')] + function_info + '\n'
 		#return line.replace(address, new_address) # wtf
 
 def main():
