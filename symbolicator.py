@@ -197,6 +197,7 @@ def main():
 		description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
 		version='%prog 1.0.2 by Peter Hosey',
 	)
+	parser.add_option('--log-dsyms', default=False, action='store_true', help='Logs the dSYM-bundle cache to stderr for debugging.')
 	opts, args = parser.parse_args()
 
 	global binary_images
@@ -300,6 +301,10 @@ def main():
 	if is_in_binary_images:
 		# Crash not followed by a newline
 		flush_buffers()
+
+	if opts.log_dsyms:
+		for UUID in dSYM_cache:
+			print >>sys.stderr, UUID, '=', dSYM_cache[UUID]
 
 if __name__ == '__main__':
 	main()
