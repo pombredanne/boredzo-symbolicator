@@ -36,7 +36,6 @@ def find_dSYM_by_UUID(UUID):
 	try:
 		dSYM_path = dSYM_cache[UUID]
 	except KeyError:
-		print >>sys.stderr, 'mdfind', "'com_apple_xcode_dsym_uuids = %s'" % (reformat_UUID(UUID),)
 		mdfind = subprocess.Popen(['mdfind', 'com_apple_xcode_dsym_uuids = ' + reformat_UUID(UUID)], stdout=subprocess.PIPE)
 
 		try:
