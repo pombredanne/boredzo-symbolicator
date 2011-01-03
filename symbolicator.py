@@ -21,6 +21,8 @@ recognized_versions = [
 	104
 ]
 
+log_search = False
+
 def reformat_UUID(UUID):
 	"Takes a plain-hex-number UUID, uppercases it, and inserts hyphens."
 	UUID = UUID.upper()
@@ -33,6 +35,8 @@ def reformat_UUID(UUID):
 
 dSYM_cache = {} # Keys: UUIDs; values: dSYM bundle paths (None indicating dSYM bundle not found)
 def find_dSYM_by_UUID(UUID):
+	if log_search:
+		print >>sys.stderr, 'Finding dSYM bundle for UUID', UUID
 	try:
 		dSYM_path = dSYM_cache[UUID]
 	except KeyError:
@@ -47,9 +51,13 @@ def find_dSYM_by_UUID(UUID):
 
 		dSYM_cache[UUID] = dSYM_path
 
+	if log_search:
+		print >>sys.stderr, 'Found:', dSYM_path
 	return dSYM_path
 
 def find_dSYM_by_bundle_ID(bundle_ID):
+	if log_search:
+		print >>sys.stderr, 'Finding dSYM bundle for', bundle_ID
 	if bundle_ID in binary_images:
 		return find_dSYM_by_UUID(binary_images[bundle_ID])
 	elif bundle_ID.startswith('...'):
@@ -198,7 +206,10 @@ def main():
 		version='%prog 1.0.2 by Peter Hosey',
 	)
 	parser.add_option('--log-dsyms', default=False, action='store_true', help='Logs the dSYM-bundle cache to stderr for debugging.')
+	parser.add_option('--log-search', default=False, action='store_true', help='Logs searches for dSYM bundles and the results of those searches to stderr. Does not distinguish between new searches and cache hits.')
 	opts, args = parser.parse_args()
+	global log_search
+	log_search = opts.log_search
 
 	global binary_images
 	binary_images = {} # Keys: bundle IDs; values: UUIDs
