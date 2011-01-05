@@ -74,8 +74,8 @@ def parse_binary_image_line(line):
 	bundle_ID = ""
 	UUID = ""
 
-	# The bundle ID is a fixed width from the left (26th character)
-	line_at_bundle_start = line[25:];
+	match = re.search(r'.*0x.*?0x.*? \+?(.*)$', line)
+	line_at_bundle_start = match.group(1);
 #	pdb.set_trace()
 	for a_bundle_id in bundle_idents:
 		if line_at_bundle_start.startswith( a_bundle_id + " " ):
