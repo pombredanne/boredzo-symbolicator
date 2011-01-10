@@ -74,7 +74,7 @@ def parse_binary_image_line(line):
 	bundle_ID = ""
 	UUID = ""
 
-	match = re.search(r'.*0x.*?0x.*? \+?(.*)$', line)
+	match = binary_image_line_exp.search(line)
 	line_at_bundle_start = match.group(1);
 #	pdb.set_trace()
 	for a_bundle_id in bundle_idents:
@@ -217,7 +217,7 @@ def main():
 	bundle_idents = []
 	global architecture
 	architecture = None
-	global binary_image_uuid_exp
+	global binary_image_line_exp, binary_image_uuid_exp
 	global backtrace_exp
 	global backtrace_slide_exp
 
@@ -229,6 +229,7 @@ def main():
 	thread_state_lines = []
 	binary_image_lines = []
 	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(Dispatch queue:.+)?$')
+	binary_image_line_exp = re.compile(r'.*0x.*?0x.*? \+?(.*)$')
 	binary_image_uuid_exp = re.compile('^.+\<(?P<uuid>[^\>]+)\>.+$')
 
 	# It'd be preferred to have just one regex but the only character we have to key on is +, which 
