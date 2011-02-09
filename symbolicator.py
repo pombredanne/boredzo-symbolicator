@@ -3,6 +3,7 @@
 import subprocess
 import fileinput
 import sys
+import os
 import re
 import optparse
 
@@ -36,7 +37,7 @@ def reformat_UUID(UUID):
 dSYM_cache = {} # Keys: UUIDs; values: dSYM bundle paths (None indicating dSYM bundle not found)
 def find_dSYM_by_UUID(UUID):
 	if log_search:
-		print >>sys.stderr, 'Finding dSYM bundle for UUID', UUID
+		print >>debug_log_file, 'Finding dSYM bundle for UUID', UUID
 	try:
 		dSYM_path = dSYM_cache[UUID]
 	except KeyError:
@@ -52,12 +53,12 @@ def find_dSYM_by_UUID(UUID):
 		dSYM_cache[UUID] = dSYM_path
 
 	if log_search:
-		print >>sys.stderr, 'Found:', dSYM_path
+		print >>debug_log_file, 'Found:', dSYM_path
 	return dSYM_path
 
 def find_dSYM_by_bundle_ID(bundle_ID):
 	if log_search:
-		print >>sys.stderr, 'Finding dSYM bundle for', bundle_ID
+		print >>debug_log_file, 'Finding dSYM bundle for', bundle_ID
 	if bundle_ID in binary_images:
 		return find_dSYM_by_UUID(binary_images[bundle_ID])
 	elif bundle_ID.startswith('...'):
@@ -205,11 +206,17 @@ def main():
 		description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
 		version='%prog 1.0.2 by Peter Hosey',
 	)
-	parser.add_option('--log-dsyms', default=False, action='store_true', help='Logs the dSYM-bundle cache to stderr for debugging.')
-	parser.add_option('--log-search', default=False, action='store_true', help='Logs searches for dSYM bundles and the results of those searches to stderr. Does not distinguish between new searches and cache hits.')
+	parser.add_option('--debug-log-fd', default=None, type='int', help='File descriptor to log debugging information to. Defaults to stderr.')
+	parser.add_option('--log-dsyms', default=False, action='store_true', help='Logs the dSYM-bundle cache to the debug log.')
+	parser.add_option('--log-search', default=False, action='store_true', help='Logs searches for dSYM bundles and the results of those searches to the debug logst. Does not distinguish between new searches and cache hits.')
 	opts, args = parser.parse_args()
 	global log_search
 	log_search = opts.log_search
+	global debug_log_file
+	if opts.debug_log_fd is None:
+		debug_log_file = sys.stderr
+	else:
+		debug_log_file = os.fdopen(opts.debug_log_fd, 'w')
 
 	global binary_images
 	binary_images = {} # Keys: bundle IDs; values: UUIDs
@@ -316,7 +323,9 @@ def main():
 
 	if opts.log_dsyms:
 		for UUID in dSYM_cache:
-			print >>sys.stderr, UUID, '=', dSYM_cache[UUID]
+			print >>debug_log_file, UUID, '=', dSYM_cache[UUID]
+
+	debug_log_file.close()
 
 if __name__ == '__main__':
 	main()
