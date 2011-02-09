@@ -256,7 +256,7 @@ def main():
 	for line in fileinput.input(args):
 		line_stripped = line.strip()
 #		pdb.set_trace()
-		if line_stripped.startswith('Process:'):
+		if line_stripped.startswith('Incident Identifier:') or line_stripped.startswith('Process:'):
 			if is_in_binary_images:
 				# End previous crash
 				flush_buffers()
