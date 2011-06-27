@@ -45,6 +45,19 @@ def find_dSYM_by_UUID(UUID):
 
 		try:
 			dSYM_path = iter(mdfind.stdout).next()[:-1] # Strip \n
+			
+			if dSYM_path.endswith(".xcarchive"):
+				dSYM_folder = os.path.join(dSYM_path, "dSYMs")
+				dSYMs = filter(lambda d: d.endswith(".dSYM"), os.listdir(dSYM_folder))
+				# I only know how to handle the case for one dSYM. I'm sure
+				# there's a way to figure out which we want for multiple-dSYM
+				# xcarchives (if such a thing exists?).
+				if len(dSYMs) == 1:
+					dSYM_path = os.path.join(dSYM_path, "dSYMs", dSYMs[0])
+				else:
+					dSYM_path = None
+					if log_search:
+						print >>debug_log_file, 'Found matching xcarchive, but contains multiple dSYMs and we don\'t know which to choose', dSYM_path
 		except StopIteration:
 			dSYM_path = None
 
