@@ -19,6 +19,7 @@ def architecture_for_code_type(code_type):
 
 recognized_versions = [
 	6,
+	9,
 	104,
 ]
 
@@ -71,10 +72,19 @@ def parse_binary_image_line(line):
 	end_address = elements.next()
 	bundle_ID = elements.next()
 	short_version = elements.next()
-	bundle_version = elements.next()
+	test = elements.next() # Hyphen-minus, version 9
+	if test != '-':
+		bundle_version = test
+	else:
+		bundle_version = elements.next()
 	UUID_in_brackets = elements.next()
 	try:
 		binary_path = elements.next()
+		try:
+			while True:
+				binary_path += ' ' + elements.next()
+		except StopIteration:
+			pass
 	except StopIteration:
 		return (None, None, None)
 
@@ -90,7 +100,7 @@ def look_up_address_by_path(bundle_ID, address):
 	if not os.path.exists(path):
 		print >>sys.stderr, "Binary does not exist: ", path
 		return
-	atos = subprocess.Popen(['/Developer/usr/bin/atos', '-arch', architecture, '-o', path, address], stdout=subprocess.PIPE)
+	atos = subprocess.Popen(['xcrun', 'atos', '-arch', architecture, '-o', path, address], stdout=subprocess.PIPE)
 	for line in atos.stdout:
 		line = line.strip()
 		return line
