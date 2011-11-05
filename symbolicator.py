@@ -3,16 +3,16 @@
 import subprocess
 import fileinput
 import sys
+import os
 import re
 import optparse
-import os
 
 def architecture_for_code_type(code_type):
 	arch_code_type_name = code_type.split()[0]
 	code_types_to_architectures = {
 		'X86': 'i386',
-		'PPC': 'ppc',
 		'X86-64': 'x86_64',
+		'PPC': 'ppc',
 		'ARM': 'arm',
 	}
 	return code_types_to_architectures[arch_code_type_name]
@@ -22,6 +22,8 @@ recognized_versions = [
 	9,
 	104,
 ]
+
+log_search = False
 
 def reformat_UUID(UUID):
 	"Takes a plain-hex-number UUID, uppercases it, and inserts hyphens."
@@ -35,6 +37,8 @@ def reformat_UUID(UUID):
 
 dSYM_cache = {} # Keys: UUIDs; values: dSYM bundle paths (None indicating dSYM bundle not found)
 def find_dSYM_by_UUID(UUID):
+	if log_search:
+		print >>debug_log_file, 'Finding dSYM bundle for UUID', UUID
 	try:
 		dSYM_path = dSYM_cache[UUID]
 	except KeyError:
@@ -42,6 +46,19 @@ def find_dSYM_by_UUID(UUID):
 
 		try:
 			dSYM_path = iter(mdfind.stdout).next()[:-1] # Strip \n
+			
+			if dSYM_path.endswith(".xcarchive"):
+				dSYM_folder = os.path.join(dSYM_path, "dSYMs")
+				dSYMs = filter(lambda d: d.endswith(".dSYM"), os.listdir(dSYM_folder))
+				# I only know how to handle the case for one dSYM. I'm sure
+				# there's a way to figure out which we want for multiple-dSYM
+				# xcarchives (if such a thing exists?).
+				if len(dSYMs) == 1:
+					dSYM_path = os.path.join(dSYM_path, "dSYMs", dSYMs[0])
+				else:
+					dSYM_path = None
+					if log_search:
+						print >>debug_log_file, 'Found matching xcarchive, but contains multiple dSYMs and we don\'t know which to choose', dSYM_path
 		except StopIteration:
 			dSYM_path = None
 
@@ -49,9 +66,13 @@ def find_dSYM_by_UUID(UUID):
 
 		dSYM_cache[UUID] = dSYM_path
 
+	if log_search:
+		print >>debug_log_file, 'Found:', dSYM_path
 	return dSYM_path
 
 def find_dSYM_by_bundle_ID(bundle_ID):
+	if log_search:
+		print >>debug_log_file, 'Finding dSYM bundle for', bundle_ID
 	if bundle_ID in binary_images:
 		return find_dSYM_by_UUID(binary_images[bundle_ID]['uuid'])
 	elif bundle_ID.startswith('...'):
@@ -105,46 +126,37 @@ def look_up_address_by_path(bundle_ID, address):
 		line = line.strip()
 		return line
 	
-def look_up_address_by_bundle_ID(bundle_ID, address):
+def look_up_address_by_bundle_ID(bundle_ID, address, slide):
 	dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
 	if dSYM_path:
-		dwarfdump = subprocess.Popen(['dwarfdump', '--arch', architecture, '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
+		dwarfdump = subprocess.Popen(['dwarfdump', '--arch=%s' % (architecture,), '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
 
-		we_care = False
 		tag_compile_unit = False
 		tag_subprogram = False
 		filename = function = None
 		line_number = 0
 		for line in dwarfdump.stdout:
 			line = line.strip()
-			if line.startswith('File: '):
-				#if (('(architecture %s)' % (architecture,)) in line) or (('(%s)' % (architecture,)) in line): # newer logs don't have 'architecture'
-				we_care = True
-				tag_compile_unit = False
+			if 'TAG_compile_unit' in line:
+				tag_compile_unit = True
 				tag_subprogram = False
-				#else:
-				#	we_care = False
-			elif we_care:
-				if 'TAG_compile_unit' in line:
-					tag_compile_unit = True
-					tag_subprogram = False
-				elif 'TAG_subprogram' in line:
-					tag_compile_unit = False
-					tag_subprogram = True
-				elif line.startswith('AT_name('):
-					name = ' '.join(line.split()[1:-1]).strip('"')
-					if tag_compile_unit:
-						filename = name
-					elif tag_subprogram:
-						function = name
-				elif line.startswith('Line table file: '):
-					match = re.search("'[^']+'", line)
-					if match:
-						filename = match.group(0).strip("'")
-					# The line number is the first decimal number after the filename.
-					match = re.search('[0-9]+', line[match.end(0):])
-					if match:
-						line_number = int(match.group(0))
+			elif 'TAG_subprogram' in line:
+				tag_compile_unit = False
+				tag_subprogram = True
+			elif line.startswith('AT_name('):
+				name = ' '.join(line.split()[1:-1]).strip('"')
+				if tag_compile_unit:
+					filename = name
+				elif tag_subprogram:
+					function = name
+			elif line.startswith('Line table file: '):
+				match = re.search("'[^']+'", line)
+				if match:
+					filename = match.group(0).strip("'")
+				# The line number is the first decimal number after the filename.
+				match = re.search('[0-9]+', line[match.end(0):])
+				if match:
+					line_number = int(match.group(0))
 		else:
 			dwarfdump.wait()
 
@@ -163,8 +175,12 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 			else:
 				format = None
 
+		# If we found nothing, try to find something via the slide value (if one exists)
 		if format is None:
-			return None
+			if slide is not None:
+				return look_up_address_by_bundle_ID( bundle_ID, slide, None )
+			else:
+				return None
 
 		return format % {
 			'function': function,
@@ -175,27 +191,34 @@ def look_up_address_by_bundle_ID(bundle_ID, address):
 		return None
 
 def symbolicate_backtrace_line(line):
-	# match lines with addresses + offsets only, skips ones with symbols
-	match = re.match('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+(?P<base_address>0x[0-9A-Fa-f]+)\s+(\+\s+)(?P<offset>[0-9]+)', line)
+	match = backtrace_exp.match( line )
 	if not match:
 		return line
 
-	bundle_ID = match.group('bundle_ID')
+	bundle_ID = match.group('bundle_ID').strip()
 	address = match.group('address')
-	offset = match.group('offset')
 
-	function_info = look_up_address_by_bundle_ID(bundle_ID, address)
-	if function_info is None: # check if it's executable or not, then use address or offset
-		if bundle_ID == executable_bundle_id:
-			lookup = look_up_address_by_path(bundle_ID, address)
-		else:
-			lookup = look_up_address_by_path(bundle_ID, offset)
-		if lookup:
-			return line[:match.start('base_address')] + lookup + '\n'
+#	print >> sys.stderr, "bundle_ID: ", bundle_ID, "\n"
+
+	slideMatch = backtrace_slide_exp.match( line )
+	if slideMatch:
+		slide = slideMatch.group('slide')
+	else:
+		slide = None
+
+	function_info = look_up_address_by_bundle_ID(bundle_ID, address, slide)
+	if function_info is None:
 		return line
 	else:
-		return line[:match.start('base_address')] + function_info + '\n'
-		#return line.replace(address, new_address) # wtf
+		return line[:match.end(0)] + function_info + '\n'
+
+def bundle_ident_from_backtrace(line):
+	match = backtrace_exp.match( line )
+	if not match:
+		return None
+	
+	bundle_ID = match.group('bundle_ID').strip()
+	return( bundle_ID )
 
 def main():
 	parser = optparse.OptionParser(
@@ -203,14 +226,29 @@ def main():
 		description="Reads one or more crash logs from named files or standard input, symbolicates them, and writes them to standard output.",
 		version='%prog 1.0.2 by Peter Hosey',
 	)
+	parser.add_option('--debug-log-fd', default=None, type='int', help='File descriptor to log debugging information to. Defaults to stderr.')
+	parser.add_option('--log-dsyms', default=False, action='store_true', help='Logs the dSYM-bundle cache to the debug log.')
+	parser.add_option('--log-search', default=False, action='store_true', help='Logs searches for dSYM bundles and the results of those searches to the debug logst. Does not distinguish between new searches and cache hits.')
 	opts, args = parser.parse_args()
+	global log_search
+	log_search = opts.log_search
+	global debug_log_file
+	if opts.debug_log_fd is None:
+		debug_log_file = sys.stderr
+	else:
+		debug_log_file = os.fdopen(opts.debug_log_fd, 'w')
 
 	global binary_images
 	binary_images = {} # Keys: bundle IDs; values: UUIDs
+	global bundle_idents
+	bundle_idents = []
 	global architecture
 	global executable_bundle_id
 	executable_bundle_id = None
 	architecture = None
+	global binary_image_line_exp, binary_image_uuid_exp
+	global backtrace_exp
+	global backtrace_slide_exp
 
 	work = False
 	is_in_backtrace = False
@@ -219,7 +257,15 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(.*)$')
+	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(Dispatch queue:.+)?$')
+	binary_image_line_exp = re.compile(r'.*0x.*?0x.*? \+?(.*)$')
+	binary_image_uuid_exp = re.compile('^.+\<(?P<uuid>[^\>]+)\>.+$')
+
+	# It'd be preferred to have just one regex but the only character we have to key on is +, which 
+	# would get us incorrect results when a class method is encountered.  backtrace_slide_exp takes
+	# advantage of the fact that regexs are greedy by default.
+	backtrace_exp = re.compile('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./ ]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+' )
+	backtrace_slide_exp = re.compile( '^[^\+]+\+\s(?P<slide>\d+)$' )
 
 	def flush_buffers():
 		for line in backtrace_lines:
@@ -231,7 +277,8 @@ def main():
 
 	for line in fileinput.input(args):
 		line_stripped = line.strip()
-		if line_stripped.startswith('Process:'):
+#		pdb.set_trace()
+		if line_stripped.startswith('Incident Identifier:') or line_stripped.startswith('Process:'):
 			if is_in_binary_images:
 				# End previous crash
 				flush_buffers()
@@ -265,11 +312,23 @@ def main():
 			binary_image_lines.append(line)
 		elif is_in_thread_state:
 			thread_state_lines.append(line)
+
 		elif is_in_backtrace:
+			the_bundle_id = bundle_ident_from_backtrace(line)
+			if the_bundle_id is not None:
+				#binary_images[the_bundle_id] = None
+				try:
+#					print >> sys.stderr, "index: ", bundle_idents.index( the_bundle_id ), "\n"
+					bundle_idents.index( the_bundle_id )
+				except ValueError:
+					bundle_idents.append( the_bundle_id )
+				
 			backtrace_lines.append(line)
+
 		elif not is_in_binary_images:
 			# We haven't gotten to backtrace or binary images yet. Pass this line through.
 			sys.stdout.write(line)
+
 		elif is_in_binary_images:
 			if line_stripped.strip():
 				binary_image_lines.append(line)
@@ -286,6 +345,12 @@ def main():
 	if is_in_binary_images:
 		# Crash not followed by a newline
 		flush_buffers()
+
+	if opts.log_dsyms:
+		for UUID in dSYM_cache:
+			print >>debug_log_file, UUID, '=', dSYM_cache[UUID]
+
+	debug_log_file.close()
 
 if __name__ == '__main__':
 	main()
