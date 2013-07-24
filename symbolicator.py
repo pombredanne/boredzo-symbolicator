@@ -20,6 +20,7 @@ def architecture_for_code_type(code_type):
 recognized_versions = [
 	6,
 	9,
+	10,
 	104,
 ]
 
@@ -72,7 +73,7 @@ def find_dSYM_by_UUID(UUID):
 
 def find_dSYM_by_bundle_ID(bundle_ID):
 	if log_search:
-		print >>debug_log_file, 'Finding dSYM bundle for', bundle_ID
+		print >>debug_log_file, 'Finding dSYM bundle for bundle ID', bundle_ID
 	if bundle_ID in binary_images:
 		return find_dSYM_by_UUID(binary_images[bundle_ID]['uuid'])
 	elif bundle_ID.startswith('...'):
@@ -84,6 +85,13 @@ def find_dSYM_by_bundle_ID(bundle_ID):
 		return None
 	else:
 		return None
+
+def find_bundle_ID_by_bundle_name(bundle_name):
+	if log_search:
+		print >>debug_log_file, 'Looking up bundle ID for bundle name', bundle_name
+	for d in binary_images.itervalues():
+		if d['name'] == bundle_name:
+			return d['bundle_ID']
 
 def parse_binary_image_line(line):
 	elements = iter(line.split())
@@ -127,7 +135,14 @@ def look_up_address_by_path(bundle_ID, address):
 		return line
 	
 def look_up_address_by_bundle_ID(bundle_ID, address, slide):
+	if log_search:
+		print >>debug_log_file, 'Looking for address', address, 'plus slide', slide, 'from bundle with ID', bundle_ID
 	dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
+	if dSYM_path is None:
+		bundle_name = bundle_ID
+		bundle_ID = find_bundle_ID_by_bundle_name(bundle_name)
+		if bundle_ID is not None:
+			dSYM_path = find_dSYM_by_bundle_ID(bundle_ID)
 	if dSYM_path:
 		dwarfdump = subprocess.Popen(['dwarfdump', '--arch=%s' % (architecture,), '--lookup', address, dSYM_path], stdout=subprocess.PIPE)
 
@@ -182,12 +197,19 @@ def look_up_address_by_bundle_ID(bundle_ID, address, slide):
 			else:
 				return None
 
+		if log_search:
+			print >>debug_log_file, 'Found result', format % {
+				'function': function,
+				'filename': filename,
+				'line_number': line_number,
+			}
 		return format % {
 			'function': function,
 			'filename': filename,
 			'line_number': line_number,
 		}
 	else:
+		print >>debug_log_file, 'Found no matching dSYM'
 		return None
 
 def symbolicate_backtrace_line(line):
@@ -257,15 +279,15 @@ def main():
 	backtrace_lines = []
 	thread_state_lines = []
 	binary_image_lines = []
-	thread_trace_start_exp = re.compile('^Thread \d+( Crashed)?:\s*(Dispatch queue:.+)?$')
+	thread_trace_start_exp = re.compile(r'^Thread \d+( Crashed)?:+\s*(Dispatch queue:.+)?$|^Application Specific Backtrace \d+:$')
 	binary_image_line_exp = re.compile(r'.*0x.*?0x.*? \+?(.*)$')
-	binary_image_uuid_exp = re.compile('^.+\<(?P<uuid>[^\>]+)\>.+$')
+	binary_image_uuid_exp = re.compile(r'^.+\<(?P<uuid>[^\>]+)\>.+$')
 
 	# It'd be preferred to have just one regex but the only character we have to key on is +, which 
 	# would get us incorrect results when a class method is encountered.  backtrace_slide_exp takes
 	# advantage of the fact that regexs are greedy by default.
-	backtrace_exp = re.compile('(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./ ]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+' )
-	backtrace_slide_exp = re.compile( '^[^\+]+\+\s(?P<slide>\d+)$' )
+	backtrace_exp = re.compile(r'(?P<frame_number>[0-9]+)\s+(?P<bundle_ID>[-_a-zA-Z0-9\./ ]+)\s+(?P<address>0x[0-9A-Fa-f]+)\s+' )
+	backtrace_slide_exp = re.compile( r'^[^\+]+\+\s(?P<slide>\d+)$' )
 
 	def flush_buffers():
 		for line in backtrace_lines:
@@ -336,7 +358,13 @@ def main():
 				if bundle_ID:
 					if executable_bundle_id == None: # first entry is executable
 						executable_bundle_id = bundle_ID
-					binary_images[bundle_ID] = {'uuid': UUID, 'path': path}
+					parent_dir, name = os.path.split(path)
+					binary_images[bundle_ID] = {
+						'uuid': UUID,
+						'bundle_ID': bundle_ID,
+						'path': path,
+						'name': name,
+					}
 			else:
 				# End of crash
 				flush_buffers()
